@@ -49,10 +49,10 @@ func percentile(r *bufio.Scanner) {
 	sort.Sort(l)
 	fl := float64(len(l))
 	fmt.Printf("count: %d\n", len(l))
-	fmt.Printf("avg: %f\n", t/fl)
-	fmt.Printf("95pt: %f\n", l[round(fl*0.95)])
-	fmt.Printf("90pt: %f\n", l[round(fl*0.90)])
-	fmt.Printf("75pt: %f\n", l[round(fl*0.75)])
+	fmt.Printf("avg: %.4f\n", t/fl)
+	fmt.Printf("95pt: %.4f\n", l[round(fl*0.95)])
+	fmt.Printf("90pt: %.4f\n", l[round(fl*0.90)])
+	fmt.Printf("75pt: %.4f\n", l[round(fl*0.75)])
 }
 
 func main() {
