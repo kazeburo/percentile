@@ -4,12 +4,6 @@ all: percentile
 
 .PHONY: percentile
 
-bundle:
-	dep ensure
-
-update:
-	dep ensure -update
-
 percentile: percentile.go
 	go build $(LDFLAGS) -o percentile
 
