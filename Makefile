@@ -16,6 +16,9 @@ fmt:
 clean:
 	rm -rf percentile
 
+check:
+	go test ./...
+
 tag:
 	git tag v${VERSION}
 	git push origin v${VERSION}
