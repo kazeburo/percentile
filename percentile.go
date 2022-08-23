@@ -53,6 +53,9 @@ func tallying(r *bufio.Scanner, percentiles []percentile) {
 		l = append(l, f)
 		t = t + f
 	}
+	if len(l) == 0 {
+		return
+	}
 	sort.Sort(l)
 	fl := float64(len(l))
 	fmt.Printf("count: %d\n", len(l))
