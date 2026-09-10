@@ -11,6 +11,8 @@ import (
 
 	"errors"
 
+	"encoding/json"
+
 	"github.com/monitoring-forge/flagrun"
 	"github.com/monitoring-forge/ltsvparser"
 	"github.com/montanaflynn/stats"
@@ -18,6 +20,7 @@ import (
 )
 
 var version string
+var usage = "`cat <filename> | percentile` or `percentile <filename>`"
 
 type percentile struct {
 	str   string
@@ -27,7 +30,8 @@ type percentile struct {
 type Opt struct {
 	Version       bool   `short:"v" long:"version" description:"Show version"`
 	PercentileSet string `short:"p" long:"percentile-set" description:"Percentiles to display" default:"99,95,90,75"`
-	ptileSet      []percentile
+	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"`
+	ptSet         []percentile
 	bufioScanner  *bufio.Scanner
 	defers        []func()
 }
@@ -80,7 +84,7 @@ func (o *Opt) displayPercentiles(floats []float64) (string, error) {
 	fmt.Fprintf(&buf, "avg: %.4f\n", avgValue)
 
 	// Percentiles
-	for _, ps := range o.ptileSet {
+	for _, ps := range o.ptSet {
 		value, err := stats.Percentile(floats, ps.float)
 		if err != nil {
 			return "", fmt.Errorf("failed to calculate percentile %s: %w", ps.str, err)
@@ -90,6 +94,49 @@ func (o *Opt) displayPercentiles(floats []float64) (string, error) {
 	return buf.String(), nil
 }
 
+func (o *Opt) displayJSONPercentiles(floats []float64) (string, error) {
+	r := make(map[string]any)
+	// Count
+	r["count"] = len(floats)
+
+	// Max
+	maxValue, err := stats.Max(floats)
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate max: %w", err)
+	}
+	r["max"] = maxValue
+
+	// Min
+	minValue, err := stats.Min(floats)
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate min: %w", err)
+	}
+	r["min"] = minValue
+
+	// Average
+	avgValue, err := stats.Mean(floats)
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate average: %w", err)
+	}
+	r["avg"] = avgValue
+
+	// Percentiles
+	for _, ps := range o.ptSet {
+		value, err := stats.Percentile(floats, ps.float)
+		if err != nil {
+			return "", fmt.Errorf("failed to calculate percentile %s: %w", ps.str, err)
+		}
+		r[fmt.Sprintf("%spt", ps.str)] = value
+	}
+
+	jsonBytes, err := json.Marshal(r)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	return string(jsonBytes), nil
+
+}
+
 func (o *Opt) Run(_ []string) (any, int) {
 
 	floats := o.tallying()
@@ -97,7 +144,13 @@ func (o *Opt) Run(_ []string) (any, int) {
 		return fmt.Errorf("no valid floats to calculate percentiles"), flagrun.CRITICAL
 	}
 
-	output, err := o.displayPercentiles(floats)
+	var output string
+	var err error
+	if o.Output == "json" {
+		output, err = o.displayJSONPercentiles(floats)
+	} else {
+		output, err = o.displayPercentiles(floats)
+	}
 	if err != nil {
 		return err, flagrun.CRITICAL
 	}
@@ -116,8 +169,6 @@ func parsePercentileSet(s string) ([]percentile, error) {
 	return percentiles, nil
 }
 
-var usage = "`cat <filename> | percentile` or `percentile <filename>`"
-
 func (o *Opt) Validate(args []string) error {
 	if o.PercentileSet == "" {
 		return fmt.Errorf("--percentile-set is required")
@@ -126,7 +177,7 @@ func (o *Opt) Validate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("could not parse --percentile-set: %w", err)
 	}
-	o.ptileSet = percentiles
+	o.ptSet = percentiles
 
 	filename := ""
 	if len(args) > 0 {
