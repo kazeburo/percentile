@@ -38,15 +38,18 @@ func (o *Opt) tallying() []float64 {
 	s := o.bufioScanner
 	for s.Scan() {
 		b := s.Bytes()
+		if len(b) == 0 {
+			continue
+		}
 		f, err := ltsvparser.ParseFloat(b)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to parsefloat `%s`: %v", string(b), err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			continue
 		}
 		t = append(t, f)
 	}
 	if err := s.Err(); err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(os.Stderr, "scanner error: %v", err)
+		fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
 	}
 	return t
 }
@@ -59,21 +62,21 @@ func (o *Opt) displayPercentiles(floats []float64) (string, error) {
 	// Max
 	maxValue, err := stats.Max(floats)
 	if err != nil {
-		return "", fmt.Errorf("failed to calculate max: %v", err)
+		return "", fmt.Errorf("failed to calculate max: %w", err)
 	}
 	fmt.Fprintf(&buf, "max: %.4f\n", maxValue)
 
 	// Min
 	minValue, err := stats.Min(floats)
 	if err != nil {
-		return "", fmt.Errorf("failed to calculate min: %v", err)
+		return "", fmt.Errorf("failed to calculate min: %w", err)
 	}
 	fmt.Fprintf(&buf, "min: %.4f\n", minValue)
 
 	// Average
 	avgValue, err := stats.Mean(floats)
 	if err != nil {
-		return "", fmt.Errorf("failed to calculate average: %v", err)
+		return "", fmt.Errorf("failed to calculate average: %w", err)
 	}
 	fmt.Fprintf(&buf, "avg: %.4f\n", avgValue)
 
@@ -81,7 +84,7 @@ func (o *Opt) displayPercentiles(floats []float64) (string, error) {
 	for _, ps := range o.ptileSet {
 		value, err := stats.Percentile(floats, ps.float)
 		if err != nil {
-			return "", fmt.Errorf("failed to calculate percentile %s: %v", ps.str, err)
+			return "", fmt.Errorf("failed to calculate percentile %s: %w", ps.str, err)
 		}
 		fmt.Fprintf(&buf, "%spt: %.4f\n", ps.str, value)
 	}
@@ -92,7 +95,7 @@ func (o *Opt) Run(_ []string) (any, int) {
 
 	floats := o.tallying()
 	if len(floats) == 0 {
-		return fmt.Errorf("No valid floats to calculate percentiles"), flagrun.CRITICAL
+		return fmt.Errorf("no valid floats to calculate percentiles"), flagrun.CRITICAL
 	}
 
 	output, err := o.displayPercentiles(floats)
@@ -104,7 +107,7 @@ func (o *Opt) Run(_ []string) (any, int) {
 
 func parsePercentileSet(s string) ([]percentile, error) {
 	percentiles := []percentile{}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		f, err := strconv.ParseFloat(part, 64)
 		if err != nil {
 			return nil, err
@@ -114,13 +117,15 @@ func parsePercentileSet(s string) ([]percentile, error) {
 	return percentiles, nil
 }
 
+var usage = "`cat <filename> | percentile` or `percentile <filename>`"
+
 func (o *Opt) Validate(args []string) error {
 	if o.PercentileSet == "" {
 		return fmt.Errorf("--percentile-set is required")
 	}
 	percentiles, err := parsePercentileSet(o.PercentileSet)
 	if err != nil {
-		return fmt.Errorf("Could not parse --percentile-set: %v", err)
+		return fmt.Errorf("could not parse --percentile-set: %w", err)
 	}
 	o.ptileSet = percentiles
 
@@ -132,7 +137,7 @@ func (o *Opt) Validate(args []string) error {
 	switch filename {
 	case "":
 		if term.IsTerminal(syscall.Stdin) {
-			return fmt.Errorf("Usage: `cat <filename> | percentile` or `percentile <filename>`")
+			return fmt.Errorf("usage: %s", usage)
 		}
 		r = bufio.NewScanner(os.Stdin)
 	case "-":
@@ -140,7 +145,7 @@ func (o *Opt) Validate(args []string) error {
 	default:
 		file, err := os.Open(filename)
 		if err != nil {
-			return fmt.Errorf("Failed to open file: %v", err)
+			return fmt.Errorf("failed to open file: %w", err)
 		}
 		o.defers = append(o.defers, func() {
 			_ = file.Close()
@@ -160,5 +165,5 @@ func main() {
 			d()
 		}
 	}()
-	os.Exit(flagrun.Go(opt, flagrun.Version(version), flagrun.Validator(opt.Validate)))
+	os.Exit(flagrun.Go(opt, flagrun.Version(version), flagrun.Validator(opt.Validate), flagrun.Usage(usage)))
 }
