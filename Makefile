@@ -4,22 +4,12 @@ all: percentile
 
 .PHONY: percentile
 
-percentile: percentile.go
+percentile: *.go
 	go build $(LDFLAGS) -o percentile
 
-linux: percentile.go
+linux: *.go
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o percentile
 
-fmt:
-	go fmt ./...
+check: *.go
+	go test -v ./...
 
-clean:
-	rm -rf percentile
-
-check:
-	go test ./...
-
-tag:
-	git tag v${VERSION}
-	git push origin v${VERSION}
-	git push origin master

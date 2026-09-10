@@ -16,7 +16,7 @@ release:
     name: percentile
 brews:
   - description: "display percentile"
-    tap:
+    repository:
       owner: kazeburo
       name: homebrew-tap
     homepage: "https://github.com/kazeburo/percentile"

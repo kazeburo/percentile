@@ -1,10 +1,16 @@
 module github.com/kazeburo/percentile
 
-go 1.18
-
-require golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8
+go 1.27.0
 
 require (
-	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
-	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
+	github.com/monitoring-forge/flagrun v0.0.10
+	github.com/monitoring-forge/ltsvparser v0.2.8
+	github.com/montanaflynn/stats v0.12.6
+	golang.org/x/term v0.46.0
+)
+
+require (
+	github.com/jessevdk/go-flags v1.6.1 // indirect
+	github.com/mackerelio/checkers v0.2.1 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
