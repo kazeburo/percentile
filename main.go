@@ -156,13 +156,10 @@ func (o *Opt) Validate(args []string) error {
 }
 
 func main() {
-	opt := &Opt{
-		defers: make([]func(), 0),
+	opt := &Opt{defers: make([]func(), 0)}
+	code := flagrun.Go(opt, flagrun.Version(version), flagrun.Validator(opt.Validate), flagrun.Usage(usage))
+	for i := len(opt.defers) - 1; i >= 0; i-- {
+		opt.defers[i]()
 	}
-	defer func() {
-		for _, d := range opt.defers {
-			d()
-		}
-	}()
-	os.Exit(flagrun.Go(opt, flagrun.Version(version), flagrun.Validator(opt.Validate), flagrun.Usage(usage)))
+	os.Exit(code)
 }
