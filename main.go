@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"errors"
 
@@ -136,7 +135,7 @@ func (o *Opt) Validate(args []string) error {
 	var r *bufio.Scanner
 	switch filename {
 	case "":
-		if term.IsTerminal(syscall.Stdin) {
+		if term.IsTerminal(0) {
 			return fmt.Errorf("usage: %s", usage)
 		}
 		r = bufio.NewScanner(os.Stdin)
