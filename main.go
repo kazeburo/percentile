@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"errors"
 
@@ -30,28 +33,53 @@ type percentile struct {
 type Opt struct {
 	Version       bool   `short:"v" long:"version" description:"Show version"`
 	PercentileSet string `short:"p" long:"percentile-set" description:"Percentiles to display" default:"99,95,90,75"`
-	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"`
+	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"` //nolint:staticcheck
 	ptSet         []percentile
-	bufioScanner  *bufio.Scanner
-	defers        []func()
+	input         io.ReadCloser
 }
 
 func (o *Opt) tallying() []float64 {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return o.tallyingContext(ctx)
+}
+
+func (o *Opt) tallyingContext(ctx context.Context) []float64 {
+	closed := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = o.input.Close()
+		close(closed)
+	})
+	defer func() {
+		if stop() {
+			// The AfterFunc was stopped before it could run, so we need to close the input ourselves.
+			_ = o.input.Close()
+		} else {
+			// The AfterFunc has run, so the input has already been closed.
+			<-closed
+		}
+	}()
+
 	var t []float64
-	s := o.bufioScanner
-	for s.Scan() {
+	s := bufio.NewScanner(o.input)
+	for ctx.Err() == nil && s.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
 		b := s.Bytes()
 		if len(b) == 0 {
 			continue
 		}
-		f, err := ltsvparser.ParseFloat(b)
+		value, err := ltsvparser.ParseFloat(b)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			continue
 		}
-		t = append(t, f)
+		t = append(t, value)
 	}
-	if err := s.Err(); err != nil && !errors.Is(err, io.EOF) {
+	if err := context.Cause(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "%s; stopping input and calculating statistics from data read so far.\n", err)
+	} else if err := s.Err(); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
 	}
 	return t
@@ -169,6 +197,24 @@ func parsePercentileSet(s string) ([]percentile, error) {
 	return percentiles, nil
 }
 
+func buildInput(filename string) (io.ReadCloser, error) {
+	switch filename {
+	case "":
+		if term.IsTerminal(0) {
+			return nil, fmt.Errorf("usage: %s", usage)
+		}
+		return os.Stdin, nil
+	case "-":
+		return os.Stdin, nil
+	default:
+		file, err := os.Open(filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file: %w", err)
+		}
+		return file, nil
+	}
+}
+
 func (o *Opt) Validate(args []string) error {
 	if o.PercentileSet == "" {
 		return fmt.Errorf("--percentile-set is required")
@@ -183,34 +229,15 @@ func (o *Opt) Validate(args []string) error {
 	if len(args) > 0 {
 		filename = args[0]
 	}
-	var r *bufio.Scanner
-	switch filename {
-	case "":
-		if term.IsTerminal(0) {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		r = bufio.NewScanner(os.Stdin)
-	case "-":
-		r = bufio.NewScanner(os.Stdin)
-	default:
-		file, err := os.Open(filename)
-		if err != nil {
-			return fmt.Errorf("failed to open file: %w", err)
-		}
-		o.defers = append(o.defers, func() {
-			_ = file.Close()
-		})
-		r = bufio.NewScanner(file)
+	o.input, err = buildInput(filename)
+	if err != nil {
+		return err
 	}
-	o.bufioScanner = r
 	return nil
 }
 
 func main() {
-	opt := &Opt{defers: make([]func(), 0)}
+	opt := &Opt{}
 	code := flagrun.Go(opt, flagrun.Version(version), flagrun.Validator(opt.Validate), flagrun.Usage(usage))
-	for i := len(opt.defers) - 1; i >= 0; i-- {
-		opt.defers[i]()
-	}
 	os.Exit(code)
 }
