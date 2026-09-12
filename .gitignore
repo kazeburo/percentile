@@ -16,3 +16,4 @@ vendor/
 dist/
 *~
 /sample.txt
+/seqwithsleep.sh
