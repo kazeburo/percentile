@@ -16,3 +16,6 @@ check: *.go
 
 lint:
 	golangci-lint run --timeout 5m ./...
+
+bench: *.go
+	go test -run='^$$' -bench=. -benchmem ./...
