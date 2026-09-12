@@ -74,6 +74,8 @@ avg: 135344.3167
 
 Each line should contain a single numeric value. Empty lines are ignored. Lines that cannot be parsed as a float are skipped with a warning written to stderr.
 
+Press Ctrl-C (send SIGINT) while reading a file or stdin to stop reading and output statistics for the valid values read so far. A message is written to stderr, and statistics use the selected text or JSON format. If no valid values have been read, the command reports an error as it does for empty input.
+
 ## Installation
 
 ### Homebrew
