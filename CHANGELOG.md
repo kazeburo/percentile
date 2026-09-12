@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.1.6](https://github.com/kazeburo/percentile/compare/v0.1.5...v0.1.6) - 2026-09-12
+
+- README.md: add instruction to stop reading with SIGINT and report sta… by @kazeburo in https://github.com/kazeburo/percentile/pull/8
+- CI: add benchmark workflow for pull requests by @kazeburo in https://github.com/kazeburo/percentile/pull/10
+- CI: update benchmark tests to use BenchmarkPercentile_Full and remove… by @kazeburo in https://github.com/kazeburo/percentile/pull/11
+
 ## [v0.1.5](https://github.com/kazeburo/percentile/compare/v0.1.4...v0.1.5) - 2026-09-10
 
 - refactor: restructure codebase and enhance workflows by @kazeburo in https://github.com/kazeburo/percentile/pull/4
