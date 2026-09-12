@@ -132,6 +132,7 @@ func TestTallyingClosesInputOnce(t *testing.T) {
 
 func BenchmarkTallying(b *testing.B) {
 	input := strings.Repeat("123.456\n", 10000)
+	b.ResetTimer()
 	b.ReportAllocs()
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
