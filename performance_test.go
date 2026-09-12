@@ -40,7 +40,7 @@ func BenchmarkPercentile_Full(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(b.Context())
 	defer cancel()
 	b.ReportAllocs()
 	b.SetBytes(int64(len(input)))
