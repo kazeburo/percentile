@@ -130,19 +130,6 @@ func TestTallyingClosesInputOnce(t *testing.T) {
 	}
 }
 
-func BenchmarkTallying(b *testing.B) {
-	input := strings.Repeat("123.456\n", 10000)
-	b.ResetTimer()
-	b.ReportAllocs()
-	b.SetBytes(int64(len(input)))
-	for b.Loop() {
-		o := &Opt{input: io.NopCloser(strings.NewReader(input))}
-		if got := o.tallyingContext(context.Background()); len(got) != 10000 {
-			b.Fatalf("expected 10000 values, got %d", len(got))
-		}
-	}
-}
-
 func mustParsePercentileSet(t *testing.T, s string) []percentile {
 	t.Helper()
 	percentiles, err := parsePercentileSet(s)
