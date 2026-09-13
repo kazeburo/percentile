@@ -106,7 +106,9 @@ func BenchmarkSortDistributions(b *testing.B) {
 				b.Run(fmt.Sprintf("%s/%d/%s", distribution, n, algorithm.name), func(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {
-						points := radixInput(n, distribution)
+							b.StopTimer()
+							points := radixInput(n, distribution)
+							b.StartTimer()
 						algorithm.sort(points)
 					}
 				})
