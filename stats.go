@@ -10,6 +10,7 @@ type Stats struct {
 	points      []float64
 	hasNegative bool
 	sum         float64
+	frozen      bool
 }
 
 type Sorted struct {
@@ -38,7 +39,12 @@ func (t *Stats) Append(point ...float64) error {
 		sum += p
 	}
 	t.sum, t.hasNegative = sum, hasNegative
-	t.points = append(t.points, point...)
+	if t.frozen {
+		t.points = append(slices.Clone(t.points), point...)
+		t.frozen = false
+	} else {
+		t.points = append(t.points, point...)
+	}
 	return nil
 }
 
@@ -49,50 +55,44 @@ func (t *Stats) Sorted() (*Sorted, error) {
 	if len(t.points) == 0 {
 		return nil, fmt.Errorf("no points to sort")
 	}
+	t.frozen = true
 	if t.hasNegative {
-		return &Sorted{
-			points: sliceSort(t.points),
-			sum:    t.sum, sumValid: true,
-		}, nil
+		slices.Sort(t.points)
+	} else {
+		radixSort(t.points)
 	}
-	// If all points are non-negative, use radix sort
 	return &Sorted{
-		points: radixSort(t.points),
+		points: t.points,
 		sum:    t.sum, sumValid: true,
 	}, nil
 }
 
-func sliceSort(points []float64) []float64 {
-	sortedPoints := make([]float64, len(points))
-	copy(sortedPoints, points)
-	slices.Sort(sortedPoints)
-	return sortedPoints
-}
-
 // radixSort accepts non-negative float64 values, excluding NaN and negative zero.
 // Stats.Append and Stats.Sorted enforce these preconditions.
+// It sorts the provided slice in-place and returns it.
 func radixSort(points []float64) []float64 {
 	// Small inputs do not amortize radix sort's histogram and scratch space.
 	if len(points) < 512 {
-		return sliceSort(points)
+		slices.Sort(points)
+		return points
 	}
 
-	sorted := make([]float64, len(points))
 	first := math.Float64bits(points[0])
 	var varying uint64
 	ordered := true
 	previous := first
-	for i, v := range points {
+	for _, v := range points {
 		key := math.Float64bits(v)
 		varying |= key ^ first
 		ordered = ordered && previous <= key
 		previous = key
-		sorted[i] = v
 	}
 	if ordered {
-		return sorted
+		return points
 	}
 
+	sorted := make([]float64, len(points))
+	copy(sorted, points)
 	temp := make([]float64, len(points))
 	for shift := uint(0); shift < 64; shift += 8 {
 		// A byte shared by every key cannot change their order.
@@ -115,7 +115,8 @@ func radixSort(points []float64) []float64 {
 		}
 		sorted, temp = temp, sorted
 	}
-	return sorted
+	copy(points, sorted)
+	return points
 }
 
 func (s *Sorted) Count() int {

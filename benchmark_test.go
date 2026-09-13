@@ -5,9 +5,17 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func sliceSort(points []float64) []float64 {
+	sortedPoints := make([]float64, len(points))
+	copy(sortedPoints, points)
+	slices.Sort(sortedPoints)
+	return sortedPoints
+}
 
 func testInputBuilder(count int) string {
 	r := rand.New(rand.NewPCG(1, 2))
@@ -59,6 +67,7 @@ func BenchmarkPercentile_Full(b *testing.B) {
 }
 
 func BenchmarkSliceSort(b *testing.B) {
+	r := rand.New(rand.NewPCG(1, 2))
 	points := make([]float64, 100000)
 	for i := range points {
 		points[i] = float64(i%100) + 0.5
@@ -66,11 +75,13 @@ func BenchmarkSliceSort(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
+		r.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
 		sliceSort(points)
 	}
 }
 
 func BenchmarkRadixSort(b *testing.B) {
+	r := rand.New(rand.NewPCG(1, 2))
 	points := make([]float64, 100000)
 	for i := range points {
 		points[i] = float64(i%100) + 0.5
@@ -78,6 +89,7 @@ func BenchmarkRadixSort(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
+		r.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
 		radixSort(points)
 	}
 }
@@ -85,7 +97,6 @@ func BenchmarkRadixSort(b *testing.B) {
 func BenchmarkSortDistributions(b *testing.B) {
 	for _, n := range []int{128, 1000, 100000} {
 		for _, distribution := range []string{"duplicates", "random", "wide", "sorted"} {
-			points := radixInput(n, distribution)
 			for _, algorithm := range []struct {
 				name string
 				sort func([]float64) []float64
@@ -95,6 +106,9 @@ func BenchmarkSortDistributions(b *testing.B) {
 				b.Run(fmt.Sprintf("%s/%d/%s", distribution, n, algorithm.name), func(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {
+							b.StopTimer()
+							points := radixInput(n, distribution)
+							b.StartTimer()
 						algorithm.sort(points)
 					}
 				})
