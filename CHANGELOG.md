@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.1.6](https://github.com/kazeburo/percentile/compare/v0.1.5...v0.1.6) - 2026-09-13
+
+- README.md: add instruction to stop reading with SIGINT and report sta… by @kazeburo in https://github.com/kazeburo/percentile/pull/8
+- CI: add benchmark workflow for pull requests by @kazeburo in https://github.com/kazeburo/percentile/pull/10
+- CI: update benchmark tests to use BenchmarkPercentile_Full and remove… by @kazeburo in https://github.com/kazeburo/percentile/pull/11
+- refactor: remove dependency on montanaflynn/stats and implement custo… by @kazeburo in https://github.com/kazeburo/percentile/pull/12
+- Refactor statistics handling and input processing by @kazeburo in https://github.com/kazeburo/percentile/pull/13
+- feat: implement frozen state in Stats for safe appending after sorting by @kazeburo in https://github.com/kazeburo/percentile/pull/14
+- refactor: optimize radixSort by eliminating temporary slice by @kazeburo in https://github.com/kazeburo/percentile/pull/15
+
 ## [v0.1.5](https://github.com/kazeburo/percentile/compare/v0.1.4...v0.1.5) - 2026-09-10
 
 - refactor: restructure codebase and enhance workflows by @kazeburo in https://github.com/kazeburo/percentile/pull/4
