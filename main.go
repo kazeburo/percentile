@@ -9,12 +9,9 @@ import (
 	"math"
 	"os"
 	"os/signal"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
-
-	"errors"
 
 	"encoding/json"
 
@@ -39,27 +36,13 @@ type Opt struct {
 	input         io.ReadCloser
 }
 
-func (o *Opt) tallying() []float64 {
+func (o *Opt) tallying() *Stats {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return o.tallyingContext(ctx)
 }
 
-func parseFloat(s []byte) (float64, error) {
-	value, err := ltsvparser.ParseFloat(s)
-	if err != nil {
-		return 0, err
-	}
-	if math.IsNaN(value) {
-		return 0, fmt.Errorf("NaN value encountered")
-	}
-	if math.IsInf(value, 0) {
-		return 0, fmt.Errorf("Infinite value encountered")
-	}
-	return value, nil
-}
-
-func (o *Opt) tallyingContext(ctx context.Context) []float64 {
+func (o *Opt) tallyingContext(ctx context.Context) *Stats {
 	closed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		_ = o.input.Close()
@@ -75,7 +58,7 @@ func (o *Opt) tallyingContext(ctx context.Context) []float64 {
 		}
 	}()
 
-	var t []float64
+	t := NewStats()
 	s := bufio.NewScanner(o.input)
 	for ctx.Err() == nil && s.Scan() {
 		if ctx.Err() != nil {
@@ -85,134 +68,76 @@ func (o *Opt) tallyingContext(ctx context.Context) []float64 {
 		if len(b) == 0 {
 			continue
 		}
-		value, err := parseFloat(b)
+		value, err := ltsvparser.ParseFloat(b)
+		if err == nil {
+			err = t.Append(value)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
-			continue
 		}
-		t = append(t, value)
 	}
 	if err := context.Cause(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s; stopping input and calculating statistics from data read so far.\n", err)
-	} else if err := s.Err(); err != nil && !errors.Is(err, io.EOF) {
+	} else if err := s.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
 	}
 	return t
 }
 
-// percentileSorted uses the same type-7 interpolation and bounds as stats.Percentile.
-// The caller must supply sorted data.
-func percentileSorted(sorted []float64, percent float64) float64 {
-	if len(sorted) == 0 {
-		return math.NaN()
+// JSON numbers cannot represent infinities or NaN.
+func jsonNumber(value float64) any {
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return strconv.FormatFloat(value, 'g', -1, 64)
 	}
-	if len(sorted) == 1 {
-		return sorted[0]
-	}
-	rank := (percent / 100) * float64(len(sorted)-1)
-	k := int(rank)
-	f := rank - float64(k)
-	if k+1 < len(sorted) {
-		return sorted[k] + f*(sorted[k+1]-sorted[k])
-	}
-	return sorted[k]
+	return value
 }
 
-// calculatePercentiles calculates the specified percentiles for the given slice of floats.
-// It returns the minimum, maximum, average, and the calculated percentiles in the order specified by o.ptSet.
-func (o *Opt) calculatePercentiles(floats []float64) (float64, float64, float64, []float64, error) {
-	if len(floats) == 0 {
-		return math.NaN(), math.NaN(), math.NaN(), nil, fmt.Errorf("no floats to calculate percentiles")
-	}
-	// Share one sorted copy across all percentiles, improving performance by avoiding repeated sorting.
-	sorted := slices.Clone(floats)
-	slices.Sort(sorted)
-
-	minValue := sorted[0]
-	maxValue := sorted[len(sorted)-1]
-	avgValue := floatsum(floats) / float64(len(floats))
-
-	if len(o.ptSet) == 0 {
-		return minValue, maxValue, avgValue, []float64{}, nil
-	}
-
-	values := make([]float64, len(o.ptSet))
-	for i, ps := range o.ptSet {
-		values[i] = percentileSorted(sorted, ps.float)
-	}
-
-	return minValue, maxValue, avgValue, values, nil
-}
-
-func floatsum(floats []float64) float64 {
-	sum := 0.0
-	for _, v := range floats {
-		sum += v
-	}
-	return sum
-}
-
-func (o *Opt) displayPercentiles(floats []float64) (string, error) {
+func (o *Opt) displayPercentiles(sorted *Sorted) string {
 	var buf bytes.Buffer
-	// Count
-	fmt.Fprintf(&buf, "count: %d\n", len(floats))
-
-	// Percentiles
-	minValue, maxValue, avgValue, values, err := o.calculatePercentiles(floats)
-	if err != nil {
-		return "", err
+	fmt.Fprintf(&buf, "count: %d\n", sorted.Count())
+	fmt.Fprintf(&buf, "max: %.4f\n", sorted.Max())
+	fmt.Fprintf(&buf, "min: %.4f\n", sorted.Min())
+	fmt.Fprintf(&buf, "avg: %.4f\n", sorted.Mean())
+	for _, ps := range o.ptSet {
+		fmt.Fprintf(&buf, "%spt: %.4f\n", ps.str, sorted.Percentile(ps.float))
 	}
-	fmt.Fprintf(&buf, "max: %.4f\n", maxValue)
-	fmt.Fprintf(&buf, "min: %.4f\n", minValue)
-	fmt.Fprintf(&buf, "avg: %.4f\n", avgValue)
-	for i, ps := range o.ptSet {
-		fmt.Fprintf(&buf, "%spt: %.4f\n", ps.str, values[i])
-	}
-	return buf.String(), nil
+	return buf.String()
 }
 
-func (o *Opt) displayJSONPercentiles(floats []float64) (string, error) {
-	r := make(map[string]any)
-	// Count
-	r["count"] = len(floats)
-
-	minValue, maxValue, avgValue, values, err := o.calculatePercentiles(floats)
-	if err != nil {
-		return "", err
+func (o *Opt) displayJSONPercentiles(sorted *Sorted) (string, error) {
+	r := map[string]any{
+		"count": sorted.Count(),
+		"min":   jsonNumber(sorted.Min()),
+		"max":   jsonNumber(sorted.Max()),
+		"avg":   jsonNumber(sorted.Mean()),
 	}
-	r["min"] = minValue
-	r["max"] = maxValue
-	r["avg"] = avgValue
-	for i, ps := range o.ptSet {
-		r[fmt.Sprintf("%spt", ps.str)] = values[i]
+	for _, ps := range o.ptSet {
+		r[fmt.Sprintf("%spt", ps.str)] = jsonNumber(sorted.Percentile(ps.float))
 	}
-
 	jsonBytes, err := json.Marshal(r)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 	return string(jsonBytes), nil
-
 }
 
 func (o *Opt) Run(_ []string) (any, int) {
-
-	floats := o.tallying()
-	if len(floats) == 0 {
+	data := o.tallying()
+	if len(data.points) == 0 {
 		return fmt.Errorf("no valid floats to calculate percentiles"), flagrun.CRITICAL
 	}
-
-	var output string
-	var err error
-	if o.Output == "json" {
-		output, err = o.displayJSONPercentiles(floats)
-	} else {
-		output, err = o.displayPercentiles(floats)
-	}
+	sorted, err := data.Sorted()
 	if err != nil {
 		return err, flagrun.CRITICAL
 	}
-	return output, flagrun.OK
+	if o.Output == "json" {
+		output, err := o.displayJSONPercentiles(sorted)
+		if err != nil {
+			return err, flagrun.CRITICAL
+		}
+		return output, flagrun.OK
+	}
+	return o.displayPercentiles(sorted), flagrun.OK
 }
 
 func parsePercentileSet(s string) ([]percentile, error) {
@@ -242,9 +167,9 @@ func buildInput(filename string) (io.ReadCloser, error) {
 		if term.IsTerminal(0) {
 			return nil, fmt.Errorf("usage: %s", usage)
 		}
-		return os.Stdin, nil
+		return openStdin()
 	case "-":
-		return os.Stdin, nil
+		return openStdin()
 	default:
 		file, err := os.Open(filename)
 		if err != nil {

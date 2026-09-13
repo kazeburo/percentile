@@ -91,3 +91,9 @@ Download the latest release from GitHub Releases and copy the binary to a direct
 ## License
 
 [MIT](LICENSE)
+
+### Infinite values
+
+Input accepts `Inf`, `+Inf`, `-Inf`, `Infinity`, and signed `Infinity` values. NaN input is skipped with a warning. Percentile positions must still be finite numbers from 0 to 100.
+
+Text output displays non-finite results as `+Inf`, `-Inf`, or `NaN`. JSON represents these results as strings with the same spelling; finite results remain JSON numbers. An average containing both signs of infinity, or interpolation between negative and positive infinity, produces NaN. Exact percentile ranks return the selected value; interpolation between equal infinities returns that infinity.
