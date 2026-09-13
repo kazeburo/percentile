@@ -34,40 +34,44 @@ func (r *testReader) Close() error {
 	return nil
 }
 
+func inputTestReader(t *testing.T, input string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := &testReader{
+		input:    strings.NewReader(input),
+		close:    cancel,
+		closed:   make(chan struct{}),
+		readDone: make(chan struct{}),
+	}
+	o := &Opt{input: r}
+	result := make(chan []float64, 1)
+	go func() { result <- o.tallyingContext(ctx) }()
+	select {
+	case got := <-result:
+		select {
+		case <-r.closed:
+		default:
+			t.Error("input was not closed after cancellation")
+		}
+		select {
+		case <-r.readDone:
+		default:
+			t.Error("read is still blocked after cancellation")
+		}
+		if input == "" {
+			require.Empty(t, got)
+		} else {
+			require.Equal(t, []float64{1.5, 2.5, 3.0}, got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SIGINT did not interrupt the blocked read")
+	}
+}
+
 func TestTallyingInterruptWhileWaitingForInput(t *testing.T) {
 	for _, input := range []string{"1.5\n2.5\n3.0\n", ""} {
 		t.Run(input, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			r := &testReader{
-				input:    strings.NewReader(input),
-				close:    cancel,
-				closed:   make(chan struct{}),
-				readDone: make(chan struct{}),
-			}
-			o := &Opt{input: r}
-			result := make(chan []float64, 1)
-			go func() { result <- o.tallyingContext(ctx) }()
-			select {
-			case got := <-result:
-				select {
-				case <-r.closed:
-				default:
-					t.Error("input was not closed after cancellation")
-				}
-				select {
-				case <-r.readDone:
-				default:
-					t.Error("read is still blocked after cancellation")
-				}
-				if input == "" {
-					require.Empty(t, got)
-				} else {
-					require.Equal(t, []float64{1.5, 2.5, 3.0}, got)
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("SIGINT did not interrupt the blocked read")
-			}
+			inputTestReader(t, input)
 		})
 	}
 }
@@ -75,7 +79,7 @@ func TestTallyingInterruptWhileWaitingForInput(t *testing.T) {
 func TestTallyingLargeInput(t *testing.T) {
 	const count = 100000
 	var input strings.Builder
-	for i := 0; i < count; i++ {
+	for i := range count {
 		fmt.Fprintln(&input, i)
 	}
 	o := &Opt{input: io.NopCloser(strings.NewReader(input.String()))}
@@ -113,9 +117,10 @@ func TestTallyingClosesInputOnce(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			r := &closeCountingReader{Reader: strings.NewReader("1\n2\n")}
-			if mode == "already canceled" {
+			switch mode {
+			case "already canceled":
 				cancel()
-			} else if mode == "cancel at EOF" {
+			case "cancel at EOF":
 				r.cancelOnEOF = cancel
 			}
 			o := &Opt{input: r}
@@ -137,6 +142,274 @@ func mustParsePercentileSet(t *testing.T, s string) []percentile {
 		t.Fatalf("failed to parse percentile set %q: %v", s, err)
 	}
 	return percentiles
+}
+
+func TestParsePercentileSet(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    []percentile
+		wantErr bool
+	}{
+		{
+			name:  "default percentile set",
+			input: "99,95,90,75",
+			want: []percentile{
+				{str: "99", float: 99},
+				{str: "95", float: 95},
+				{str: "90", float: 90},
+				{str: "75", float: 75},
+			},
+		},
+		{
+			name:  "single value",
+			input: "50",
+			want:  []percentile{{str: "50", float: 50}},
+		},
+		{
+			name:  "decimal value",
+			input: "99.9",
+			want:  []percentile{{str: "99.9", float: 99.9}},
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid value",
+			input:   "foo",
+			wantErr: true,
+		},
+		{
+			name:    "negative value",
+			input:   "-1",
+			wantErr: true,
+		},
+		{
+			name:    "value over 100",
+			input:   "101",
+			wantErr: true,
+		},
+		{
+			name:    "NaN",
+			input:   "NaN",
+			wantErr: true,
+		},
+		{
+			name:    "positive infinity",
+			input:   "+Inf",
+			wantErr: true,
+		},
+		{
+			name:    "negative infinity",
+			input:   "-Inf",
+			wantErr: true,
+		},
+		{
+			name:    "infinity",
+			input:   "Infinity",
+			wantErr: true,
+		},
+		{
+			name:    "mixed valid and invalid",
+			input:   "50,foo",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parsePercentileSet(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCalculatePercentiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		floats  []float64
+		ptSet   string
+		wantMin float64
+		wantMax float64
+		wantAvg float64
+		wantPts []float64
+		wantErr bool
+	}{
+		{
+			name:    "basic values with default percentiles",
+			floats:  []float64{8.0, 2.0, 10.0, 4.0, 6.0, 3.0, 7.0, 1.0, 9.0, 5.0},
+			ptSet:   "99,95,90,75",
+			wantMin: 1,
+			wantMax: 10,
+			wantAvg: 5.5,
+			wantPts: []float64{9.91, 9.549999999999999, 9.1, 7.75},
+		},
+		{
+			name:    "single value",
+			floats:  []float64{42.0},
+			ptSet:   "50",
+			wantMin: 42,
+			wantMax: 42,
+			wantAvg: 42,
+			wantPts: []float64{42},
+		},
+		{
+			name:    "two values",
+			floats:  []float64{1.0, 3.0},
+			ptSet:   "50",
+			wantMin: 1,
+			wantMax: 3,
+			wantAvg: 2,
+			wantPts: []float64{2},
+		},
+		{
+			name:    "empty percentile set",
+			floats:  []float64{1.0, 2.0, 3.0},
+			ptSet:   "",
+			wantMin: 1,
+			wantMax: 3,
+			wantAvg: 2,
+			wantPts: []float64{},
+		},
+		{
+			name:    "unsorted input",
+			floats:  []float64{5.0, 1.0, 3.0, 2.0, 4.0},
+			ptSet:   "0,100,50",
+			wantMin: 1,
+			wantMax: 5,
+			wantAvg: 3,
+			wantPts: []float64{1, 5, 3},
+		},
+		{
+			name:    "decimal percentiles",
+			floats:  []float64{1.0, 2.0, 3.0, 4.0, 5.0},
+			ptSet:   "12.5,87.5",
+			wantMin: 1,
+			wantMax: 5,
+			wantAvg: 3,
+			wantPts: []float64{1.5, 4.5},
+		},
+		{
+			name:    "duplicate values",
+			floats:  []float64{5.0, 5.0, 5.0, 5.0},
+			ptSet:   "25,50,75",
+			wantMin: 5,
+			wantMax: 5,
+			wantAvg: 5,
+			wantPts: []float64{5, 5, 5},
+		},
+		{
+			name:    "negative values",
+			floats:  []float64{-5.0, -1.0, -3.0},
+			ptSet:   "50",
+			wantMin: -5,
+			wantMax: -1,
+			wantAvg: -3,
+			wantPts: []float64{-3},
+		},
+		{
+			name:    "empty input",
+			floats:  []float64{},
+			ptSet:   "50",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &Opt{}
+			if tt.ptSet != "" {
+				o.ptSet = mustParsePercentileSet(t, tt.ptSet)
+			}
+			min, max, avg, pts, err := o.calculatePercentiles(tt.floats)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.InDelta(t, tt.wantMin, min, 1e-9)
+			require.InDelta(t, tt.wantMax, max, 1e-9)
+			require.InDelta(t, tt.wantAvg, avg, 1e-9)
+			require.Len(t, pts, len(tt.wantPts))
+			for i := range pts {
+				require.InDelta(t, tt.wantPts[i], pts[i], 1e-9)
+			}
+		})
+	}
+}
+
+func TestParseFloat(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    float64
+		wantErr bool
+	}{
+		{
+			name:  "plain integer",
+			input: "42",
+			want:  42,
+		},
+		{
+			name:  "plain decimal",
+			input: "3.14",
+			want:  3.14,
+		},
+		{
+			name:  "ltsv value part",
+			input: "1.5",
+			want:  1.5,
+		},
+		{
+			name:  "negative value",
+			input: "-1.5",
+			want:  -1.5,
+		},
+		{
+			name:    "invalid value",
+			input:   "foo:bar",
+			wantErr: true,
+		},
+		{
+			name:    "NaN",
+			input:   "NaN",
+			wantErr: true,
+		},
+		{
+			name:    "positive infinity",
+			input:   "+Inf",
+			wantErr: true,
+		},
+		{
+			name:    "negative infinity",
+			input:   "-Inf",
+			wantErr: true,
+		},
+		{
+			name:    "empty input",
+			input:   "",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseFloat([]byte(tt.input))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.InDelta(t, tt.want, got, 1e-9)
+		})
+	}
 }
 
 func TestTallying(t *testing.T) {
@@ -197,7 +470,7 @@ func TestDisplayJSONPercentiles(t *testing.T) {
 		ptSet: mustParsePercentileSet(t, "99,95,90,75"),
 	}
 
-	floats := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+	floats := []float64{8.0, 2.0, 10.0, 4.0, 6.0, 3.0, 7.0, 1.0, 9.0, 5.0}
 	output, err := o.displayJSONPercentiles(floats)
 	if err != nil {
 		t.Fatalf("displayJSONPercentiles returned error: %v", err)
@@ -229,7 +502,7 @@ func TestDisplayPercentiles(t *testing.T) {
 		ptSet: mustParsePercentileSet(t, "99,95,90,75"),
 	}
 
-	floats := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+	floats := []float64{8.0, 2.0, 10.0, 4.0, 6.0, 3.0, 7.0, 1.0, 9.0, 5.0}
 	output, err := o.displayPercentiles(floats)
 	if err != nil {
 		t.Fatalf("displayPercentiles returned error: %v", err)
