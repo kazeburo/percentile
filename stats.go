@@ -93,7 +93,6 @@ func radixSort(points []float64) []float64 {
 
 	sorted := make([]float64, len(points))
 	copy(sorted, points)
-	temp := make([]float64, len(points))
 	for shift := uint(0); shift < 64; shift += 8 {
 		// A byte shared by every key cannot change their order.
 		if (varying>>shift)&0xff == 0 {
@@ -110,10 +109,10 @@ func radixSort(points []float64) []float64 {
 		}
 		for _, v := range sorted {
 			idx := (math.Float64bits(v) >> shift) & 0xff
-			temp[count[idx]] = v
+			points[count[idx]] = v
 			count[idx]++
 		}
-		sorted, temp = temp, sorted
+		sorted, points = points, sorted
 	}
 	copy(points, sorted)
 	return points
