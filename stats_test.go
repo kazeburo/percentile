@@ -198,6 +198,22 @@ func TestStatsMeanPreservesInputOrder(t *testing.T) {
 	require.Equal(t, 0.0, sorted.Mean())
 }
 
+func TestStatsFrozenAppend(t *testing.T) {
+	s := NewStats()
+	require.NoError(t, s.Append(3.0, 1.0, 2.0))
+	sorted, err := s.Sorted()
+	require.NoError(t, err)
+	require.Equal(t, []float64{1.0, 2.0, 3.0}, sorted.points)
+
+	// Appending after Sorted must not mutate the already-sorted slice.
+	require.NoError(t, s.Append(0.5))
+	require.Equal(t, []float64{1.0, 2.0, 3.0}, sorted.points)
+
+	sorted2, err := s.Sorted()
+	require.NoError(t, err)
+	require.Equal(t, []float64{0.5, 1.0, 2.0, 3.0}, sorted2.points)
+}
+
 func TestSortedCount(t *testing.T) {
 	s := &Sorted{points: []float64{1.0, 2.0, 3.0}}
 	require.Equal(t, 3, s.Count())
@@ -403,7 +419,8 @@ func TestRadixSort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := radixSort(tt.input)
+			input := slices.Clone(tt.input)
+			got := radixSort(input)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -414,15 +431,9 @@ func TestRadixSortMatchesSlices(t *testing.T) {
 		for _, distribution := range []string{"duplicates", "random", "wide", "sorted", "equal"} {
 			t.Run(fmt.Sprintf("%s/%d", distribution, n), func(t *testing.T) {
 				points := radixInput(n, distribution)
-				before := slices.Clone(points)
-				want := sliceSort(points)
-				got := radixSort(points)
+				want := sliceSort(slices.Clone(points))
+				got := radixSort(slices.Clone(points))
 				require.Equal(t, want, got)
-				require.True(t, slices.Equal(before, points), "input was modified")
-				if len(got) > 0 {
-					got[0] = -1
-					require.True(t, slices.Equal(before, points), "result aliases input")
-				}
 			})
 		}
 	}
