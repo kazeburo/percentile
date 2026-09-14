@@ -377,18 +377,6 @@ func TestInfinityPercentiles(t *testing.T) {
 	}
 }
 
-func TestSliceSort(t *testing.T) {
-	t.Run("sorts float64 slice", func(t *testing.T) {
-		got := sliceSort([]float64{3.0, 1.0, 2.0})
-		require.Equal(t, []float64{1.0, 2.0, 3.0}, got)
-	})
-
-	t.Run("empty slice", func(t *testing.T) {
-		got := sliceSort([]float64{})
-		require.Empty(t, got)
-	})
-}
-
 func TestRadixSort(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -426,12 +414,17 @@ func TestRadixSort(t *testing.T) {
 	}
 }
 
+func aliasSlicesSort(points []float64) []float64 {
+	slices.Sort(points)
+	return points
+}
+
 func TestRadixSortMatchesSlices(t *testing.T) {
 	for _, n := range []int{0, 1, 127, 128, 129, 511, 512, 513, 1000, 10000} {
 		for _, distribution := range []string{"duplicates", "random", "wide", "sorted", "equal"} {
 			t.Run(fmt.Sprintf("%s/%d", distribution, n), func(t *testing.T) {
 				points := radixInput(n, distribution)
-				want := sliceSort(slices.Clone(points))
+				want := aliasSlicesSort(slices.Clone(points))
 				got := radixSort(slices.Clone(points))
 				require.Equal(t, want, got)
 			})
@@ -445,7 +438,7 @@ func TestRadixSortExtremeValues(t *testing.T) {
 	for i := range points {
 		points[i] = extremes[i%len(extremes)]
 	}
-	require.Equal(t, sliceSort(points), radixSort(points))
+	require.Equal(t, aliasSlicesSort(points), radixSort(points))
 }
 
 func radixInput(n int, distribution string) []float64 {
@@ -463,6 +456,8 @@ func radixInput(n int, distribution string) []float64 {
 			points[i] = float64(i)
 		case "equal":
 			points[i] = 42
+		case "response_time":
+			points[i] = float64(r.IntN(500)) / 1000
 		}
 	}
 	return points
