@@ -1,4 +1,4 @@
-VERSION=0.1.6
+VERSION=0.1.7
 LDFLAGS=-ldflags "-w -s -X main.version=${VERSION}"
 all: percentile
 
