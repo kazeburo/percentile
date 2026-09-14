@@ -4,24 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand/v2"
-	"slices"
 	"strings"
 	"testing"
 )
 
-func sliceSort(points []float64) []float64 {
-	sortedPoints := make([]float64, len(points))
-	copy(sortedPoints, points)
-	slices.Sort(sortedPoints)
-	return sortedPoints
-}
-
 func testInputBuilder(count int) string {
-	r := rand.New(rand.NewPCG(1, 2))
 	var inputBuilder strings.Builder
-	for range count {
-		fmt.Fprintf(&inputBuilder, "%.2f\n", float64(r.IntN(1000000))/100)
+	for _, f := range radixInput(count, "response_time") {
+		fmt.Fprintf(&inputBuilder, "%.3f\n", f)
 	}
 	return inputBuilder.String()
 }
@@ -50,6 +40,7 @@ func BenchmarkPercentile_Full(b *testing.B) {
 	}
 	ctx, cancel := context.WithCancel(b.Context())
 	defer cancel()
+	b.ResetTimer()
 	b.ReportAllocs()
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
@@ -66,52 +57,52 @@ func BenchmarkPercentile_Full(b *testing.B) {
 	}
 }
 
+/*
 func BenchmarkSliceSort(b *testing.B) {
-	r := rand.New(rand.NewPCG(1, 2))
-	points := make([]float64, 100000)
-	for i := range points {
-		points[i] = float64(i%100) + 0.5
-	}
+	points := radixInput(100000, "random")
 
 	b.ResetTimer()
 	for b.Loop() {
-		r.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
-		sliceSort(points)
+		b.StopTimer()
+		rand.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
+		b.StartTimer()
+		slices.Sort(points)
 	}
 }
 
 func BenchmarkRadixSort(b *testing.B) {
-	r := rand.New(rand.NewPCG(1, 2))
-	points := make([]float64, 100000)
-	for i := range points {
-		points[i] = float64(i%100) + 0.5
-	}
+	points := radixInput(100000, "random")
 
 	b.ResetTimer()
 	for b.Loop() {
-		r.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
+		b.StopTimer()
+		rand.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
+		b.StartTimer()
 		radixSort(points)
 	}
 }
+*/
 
 func BenchmarkSortDistributions(b *testing.B) {
-	for _, n := range []int{128, 1000, 100000} {
-		for _, distribution := range []string{"duplicates", "random", "wide", "sorted"} {
-			for _, algorithm := range []struct {
-				name string
-				sort func([]float64) []float64
-			}{
-				{"slices", sliceSort}, {"radix", radixSort},
-			} {
-				b.Run(fmt.Sprintf("%s/%d/%s", distribution, n, algorithm.name), func(b *testing.B) {
-					b.ReportAllocs()
-					for b.Loop() {
+	for _, algorithm := range []struct {
+		name string
+		sort func([]float64) []float64
+	}{
+		{"slices", aliasSlicesSort}, {"radix", radixSort},
+	} {
+		for _, n := range []int{1000, 10000, 100000} {
+			for _, distribution := range []string{"duplicates", "random", "wide", "sorted", "response_time"} {
+				{
+					b.Run(fmt.Sprintf("%s/%d/%s", algorithm.name, n, distribution), func(b *testing.B) {
+						b.ReportAllocs()
+						for b.Loop() {
 							b.StopTimer()
 							points := radixInput(n, distribution)
 							b.StartTimer()
-						algorithm.sort(points)
-					}
-				})
+							algorithm.sort(points)
+						}
+					})
+				}
 			}
 		}
 	}

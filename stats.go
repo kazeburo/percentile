@@ -7,10 +7,12 @@ import (
 )
 
 type Stats struct {
-	points      []float64
-	hasNegative bool
-	sum         float64
-	frozen      bool
+	PreferSlicesSort bool
+	InitialCapacity  int
+	points           []float64
+	hasNegative      bool
+	sum              float64
+	frozen           bool
 }
 
 type Sorted struct {
@@ -19,11 +21,33 @@ type Sorted struct {
 	sumValid bool
 }
 
-func NewStats() *Stats {
-	return &Stats{
-		points:      []float64{},
-		hasNegative: false,
+type Option func(*Stats)
+
+func WithInitialCapacity(cap int) Option {
+	return func(s *Stats) {
+		s.InitialCapacity = cap
 	}
+}
+
+func WithPreferSlicesSort(prefer bool) Option {
+	return func(s *Stats) {
+		s.PreferSlicesSort = prefer
+	}
+}
+
+func NewStats(opts ...Option) *Stats {
+	s := &Stats{
+		InitialCapacity: 128,
+		hasNegative:     false,
+		sum:             0,
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	if s.InitialCapacity > 0 {
+		s.points = make([]float64, 0, s.InitialCapacity)
+	}
+	return s
 }
 
 func (t *Stats) Append(point ...float64) error {
@@ -56,14 +80,15 @@ func (t *Stats) Sorted() (*Sorted, error) {
 		return nil, fmt.Errorf("no points to sort")
 	}
 	t.frozen = true
-	if t.hasNegative {
+	if t.hasNegative || t.PreferSlicesSort {
 		slices.Sort(t.points)
 	} else {
 		radixSort(t.points)
 	}
 	return &Sorted{
-		points: t.points,
-		sum:    t.sum, sumValid: true,
+		points:   t.points,
+		sum:      t.sum,
+		sumValid: true,
 	}, nil
 }
 

@@ -14,6 +14,7 @@ Application Options:
   -v, --version            Show version
   -p, --percentile-set=    Percentiles to display (default: 99,95,90,75)
   -o, --output=[text|json] Output format (default: text)
+  -l, --low-cardinality    Optimize for low cardinality data
 
 Help Options:
   -h, --help               Show this help message
@@ -26,6 +27,7 @@ Help Options:
 | `--version` | `-v` | Show version and exit. | - |
 | `--percentile-set` | `-p` | Comma-separated list of percentiles to display. | `99,95,90,75` |
 | `--output` | `-o` | Output format. Choose `text` or `json`. | `text` |
+| `--low-cardinality` | `-l` | Optimize sorting for low-cardinality or narrow-range data. | `false` |
 
 ## Examples
 
