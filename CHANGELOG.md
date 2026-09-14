@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.7](https://github.com/kazeburo/percentile/compare/v0.1.6...v0.1.7) - 2026-09-14
+
+- feat: add low cardinality optimization and update benchmarks by @kazeburo in https://github.com/kazeburo/percentile/pull/16
+
 ## [v0.1.6](https://github.com/kazeburo/percentile/compare/v0.1.5...v0.1.6) - 2026-09-13
 
 - README.md: add instruction to stop reading with SIGINT and report sta… by @kazeburo in https://github.com/kazeburo/percentile/pull/8
