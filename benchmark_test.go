@@ -4,9 +4,33 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
 	"strings"
 	"testing"
 )
+
+func radixInput(n int, distribution string) []float64 {
+	r := rand.New(rand.NewPCG(1, 2))
+	points := make([]float64, n)
+	for i := range points {
+		switch distribution {
+		case "duplicates":
+			points[i] = float64(i%100) + 0.5
+		case "random":
+			points[i] = r.Float64() * 10000
+		case "wide":
+			points[i] = math.Float64frombits(r.Uint64() & 0x7fefffffffffffff)
+		case "sorted":
+			points[i] = float64(i)
+		case "equal":
+			points[i] = 42
+		case "response_time":
+			points[i] = float64(r.IntN(500)) / 1000
+		}
+	}
+	return points
+}
 
 func testInputBuilder(count int) string {
 	var inputBuilder strings.Builder
@@ -24,8 +48,13 @@ func BenchmarkPercentile_Tallying(b *testing.B) {
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
 		o := &Opt{input: io.NopCloser(strings.NewReader(input))}
-		if got := o.tallyingContext(context.Background()); len(got.points) != count {
-			b.Fatalf("expected %d values, got %d", count, len(got.points))
+		sampdo := o.tallyingContext(context.Background())
+		sorted, err := sampdo.Sorted()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if sorted.Count() != count {
+			b.Fatalf("expected %d values, got %d", count, sorted.Count())
 		}
 	}
 }
@@ -45,65 +74,14 @@ func BenchmarkPercentile_Full(b *testing.B) {
 	b.SetBytes(int64(len(input)))
 	for b.Loop() {
 		o := &Opt{ptSet: ps, input: io.NopCloser(strings.NewReader(input))}
-		values := o.tallyingContext(ctx)
-		if len(values.points) != count {
-			b.Fatalf("expected %d values, got %d", count, len(values.points))
-		}
-		sorted, err := values.Sorted()
+		sampdo := o.tallyingContext(ctx)
+		sorted, err := sampdo.Sorted()
 		if err != nil {
 			b.Fatal(err)
 		}
-		o.displayPercentiles(sorted)
-	}
-}
-
-/*
-func BenchmarkSliceSort(b *testing.B) {
-	points := radixInput(100000, "random")
-
-	b.ResetTimer()
-	for b.Loop() {
-		b.StopTimer()
-		rand.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
-		b.StartTimer()
-		slices.Sort(points)
-	}
-}
-
-func BenchmarkRadixSort(b *testing.B) {
-	points := radixInput(100000, "random")
-
-	b.ResetTimer()
-	for b.Loop() {
-		b.StopTimer()
-		rand.Shuffle(len(points), func(i, j int) { points[i], points[j] = points[j], points[i] })
-		b.StartTimer()
-		radixSort(points)
-	}
-}
-*/
-
-func BenchmarkSortDistributions(b *testing.B) {
-	for _, algorithm := range []struct {
-		name string
-		sort func([]float64) []float64
-	}{
-		{"slices", aliasSlicesSort}, {"radix", radixSort},
-	} {
-		for _, n := range []int{1000, 10000, 100000} {
-			for _, distribution := range []string{"duplicates", "random", "wide", "sorted", "response_time"} {
-				{
-					b.Run(fmt.Sprintf("%s/%d/%s", algorithm.name, n, distribution), func(b *testing.B) {
-						b.ReportAllocs()
-						for b.Loop() {
-							b.StopTimer()
-							points := radixInput(n, distribution)
-							b.StartTimer()
-							algorithm.sort(points)
-						}
-					})
-				}
-			}
+		if sorted.Count() != count {
+			b.Fatalf("expected %d values, got %d", count, sorted.Count())
 		}
+		_, _ = o.displayPercentiles(sorted)
 	}
 }
