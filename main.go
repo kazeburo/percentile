@@ -17,6 +17,7 @@ import (
 
 	"github.com/monitoring-forge/flagrun"
 	"github.com/monitoring-forge/ltsvparser"
+	"github.com/monitoring-forge/sampdo"
 	"golang.org/x/term"
 )
 
@@ -37,13 +38,13 @@ type Opt struct {
 	input          io.ReadCloser
 }
 
-func (o *Opt) tallying() *Stats {
+func (o *Opt) tallying() *sampdo.Sampdo {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return o.tallyingContext(ctx)
 }
 
-func (o *Opt) tallyingContext(ctx context.Context) *Stats {
+func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
 	closed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		_ = o.input.Close()
@@ -58,7 +59,7 @@ func (o *Opt) tallyingContext(ctx context.Context) *Stats {
 			<-closed
 		}
 	}()
-	t := NewStats(WithPreferSlicesSort(o.LowCardinality))
+	t := sampdo.New(sampdo.WithPreferSlicesSort(o.LowCardinality))
 	s := bufio.NewScanner(o.input)
 	for ctx.Err() == nil && s.Scan() {
 		if ctx.Err() != nil {
@@ -92,27 +93,59 @@ func jsonNumber(value float64) any {
 	return value
 }
 
-func (o *Opt) displayPercentiles(sorted *Sorted) string {
+func (o *Opt) displayPercentiles(sorted *sampdo.Sorted) (string, error) {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "count: %d\n", sorted.Count())
-	fmt.Fprintf(&buf, "max: %.4f\n", sorted.Max())
-	fmt.Fprintf(&buf, "min: %.4f\n", sorted.Min())
-	fmt.Fprintf(&buf, "avg: %.4f\n", sorted.Mean())
-	for _, ps := range o.ptSet {
-		fmt.Fprintf(&buf, "%spt: %.4f\n", ps.str, sorted.Percentile(ps.float))
+	max, err := sorted.Max()
+	if err != nil {
+		return "", err
 	}
-	return buf.String()
+	min, err := sorted.Min()
+	if err != nil {
+		return "", err
+	}
+	mean, err := sorted.Mean()
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&buf, "count: %d\n", sorted.Count())
+	fmt.Fprintf(&buf, "max: %.4f\n", max)
+	fmt.Fprintf(&buf, "min: %.4f\n", min)
+	fmt.Fprintf(&buf, "avg: %.4f\n", mean)
+	for _, ps := range o.ptSet {
+		p, err := sorted.Percentile(ps.float)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&buf, "%spt: %.4f\n", ps.str, p)
+	}
+	return buf.String(), nil
 }
 
-func (o *Opt) displayJSONPercentiles(sorted *Sorted) (string, error) {
+func (o *Opt) displayJSONPercentiles(sorted *sampdo.Sorted) (string, error) {
+	max, err := sorted.Max()
+	if err != nil {
+		return "", err
+	}
+	min, err := sorted.Min()
+	if err != nil {
+		return "", err
+	}
+	mean, err := sorted.Mean()
+	if err != nil {
+		return "", err
+	}
 	r := map[string]any{
 		"count": sorted.Count(),
-		"min":   jsonNumber(sorted.Min()),
-		"max":   jsonNumber(sorted.Max()),
-		"avg":   jsonNumber(sorted.Mean()),
+		"min":   jsonNumber(min),
+		"max":   jsonNumber(max),
+		"avg":   jsonNumber(mean),
 	}
 	for _, ps := range o.ptSet {
-		r[fmt.Sprintf("%spt", ps.str)] = jsonNumber(sorted.Percentile(ps.float))
+		p, err := sorted.Percentile(ps.float)
+		if err != nil {
+			return "", err
+		}
+		r[fmt.Sprintf("%spt", ps.str)] = jsonNumber(p)
 	}
 	jsonBytes, err := json.Marshal(r)
 	if err != nil {
@@ -123,12 +156,9 @@ func (o *Opt) displayJSONPercentiles(sorted *Sorted) (string, error) {
 
 func (o *Opt) Run(_ []string) (any, int) {
 	data := o.tallying()
-	if len(data.points) == 0 {
-		return fmt.Errorf("no valid floats to calculate percentiles"), flagrun.CRITICAL
-	}
 	sorted, err := data.Sorted()
 	if err != nil {
-		return err, flagrun.CRITICAL
+		return fmt.Errorf("no valid floats to calculate percentiles"), flagrun.CRITICAL
 	}
 	if o.Output == "json" {
 		output, err := o.displayJSONPercentiles(sorted)
@@ -137,7 +167,11 @@ func (o *Opt) Run(_ []string) (any, int) {
 		}
 		return output, flagrun.OK
 	}
-	return o.displayPercentiles(sorted), flagrun.OK
+	output, err := o.displayPercentiles(sorted)
+	if err != nil {
+		return err, flagrun.CRITICAL
+	}
+	return output, flagrun.OK
 }
 
 func parsePercentileSet(s string) ([]percentile, error) {

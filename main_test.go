@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/monitoring-forge/sampdo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,23 +129,40 @@ func TestTallying(t *testing.T) {
 			o := &Opt{
 				input: io.NopCloser(strings.NewReader(tt.input)),
 			}
-			got := o.tallying().points
-			if len(got) != len(tt.expected) {
-				t.Fatalf("expected %v, got %v", tt.expected, got)
+			sorted, err := o.tallying().Sorted()
+			if tt.expected == nil {
+				require.Error(t, err)
+				return
 			}
-			for i := range got {
-				if got[i] != tt.expected[i] {
-					t.Errorf("expected %v, got %v", tt.expected, got)
-					break
-				}
+			require.NoError(t, err)
+			require.Equal(t, len(tt.expected), sorted.Count())
+			for i, want := range tt.expected {
+				got, err := getSortedPoint(sorted, i)
+				require.NoError(t, err)
+				require.Equal(t, want, got)
 			}
 		})
 	}
 }
 
+func getSortedPoint(sorted *sampdo.Sorted, i int) (float64, error) {
+	if sorted.Count() == 1 {
+		return sorted.Percentile(0)
+	}
+	return sorted.Percentile(float64(i) / float64(sorted.Count()-1) * 100)
+}
+
 func TestTallyingAcceptsInfinity(t *testing.T) {
 	o := &Opt{input: io.NopCloser(strings.NewReader("Infinity\n-Infinity\nNaN\n1\n"))}
-	require.Equal(t, []float64{math.Inf(1), math.Inf(-1), 1}, o.tallyingContext(context.Background()).points)
+	sorted, err := o.tallyingContext(context.Background()).Sorted()
+	require.NoError(t, err)
+	require.Equal(t, 3, sorted.Count())
+	min, err := sorted.Min()
+	require.NoError(t, err)
+	require.Equal(t, math.Inf(-1), min)
+	max, err := sorted.Max()
+	require.NoError(t, err)
+	require.Equal(t, math.Inf(1), max)
 }
 
 func TestTallyingInterruptWhileWaitingForInput(t *testing.T) {
@@ -162,12 +180,13 @@ func TestTallyingLargeInput(t *testing.T) {
 		fmt.Fprintln(&input, i)
 	}
 	o := &Opt{input: io.NopCloser(strings.NewReader(input.String()))}
-	got := o.tallyingContext(context.Background())
-	require.Len(t, got.points, count)
-	for i, value := range got.points {
-		if value != float64(i) {
-			t.Fatalf("value[%d]: expected %d, got %v", i, i, value)
-		}
+	sorted, err := o.tallyingContext(context.Background()).Sorted()
+	require.NoError(t, err)
+	require.Equal(t, count, sorted.Count())
+	for i := range count {
+		got, err := getSortedPoint(sorted, i)
+		require.NoError(t, err)
+		require.InDelta(t, float64(i), got, 1e-9)
 	}
 }
 
@@ -184,11 +203,17 @@ func TestTallyingClosesInputOnce(t *testing.T) {
 				r.cancelOnEOF = cancel
 			}
 			o := &Opt{input: r}
-			got := o.tallyingContext(ctx)
+			sorted, err := o.tallyingContext(ctx).Sorted()
 			if mode == "already canceled" {
-				require.Empty(t, got.points)
+				require.Error(t, err)
 			} else {
-				require.Equal(t, []float64{1, 2}, got.points)
+				require.NoError(t, err)
+				require.Equal(t, 2, sorted.Count())
+				for i, want := range []float64{1, 2} {
+					got, err := getSortedPoint(sorted, i)
+					require.NoError(t, err)
+					require.Equal(t, want, got)
+				}
 			}
 			require.Equal(t, 1, r.closeCalls)
 		})
@@ -201,7 +226,8 @@ func TestDisplayPercentiles(t *testing.T) {
 	}
 
 	floats := []float64{8.0, 2.0, 10.0, 4.0, 6.0, 3.0, 7.0, 1.0, 9.0, 5.0}
-	output := o.displayPercentiles(mustSorted(t, floats))
+	output, err := o.displayPercentiles(mustSorted(t, floats))
+	require.NoError(t, err)
 	expected := `count: 10
 max: 10.0000
 min: 1.0000
@@ -212,6 +238,17 @@ avg: 5.5000
 75pt: 7.7500
 `
 	require.Equal(t, expected, output)
+}
+
+type testJSONOutput struct {
+	Count int     `json:"count"`
+	Max   float64 `json:"max"`
+	Min   float64 `json:"min"`
+	Avg   float64 `json:"avg"`
+	P75   float64 `json:"75pt"`
+	P90   float64 `json:"90pt"`
+	P95   float64 `json:"95pt"`
+	P99   float64 `json:"99pt"`
 }
 
 func TestDisplayJSONPercentiles(t *testing.T) {
@@ -253,7 +290,8 @@ func TestCLIJSONNonFiniteValues(t *testing.T) {
 	var got map[string]any
 	require.NoError(t, json.Unmarshal([]byte(output), &got))
 	require.Equal(t, map[string]any{"count": float64(2), "min": "-Inf", "max": "+Inf", "avg": "NaN", "0pt": "-Inf", "50pt": "NaN", "100pt": "+Inf"}, got)
-	text := o.displayPercentiles(mustSorted(t, []float64{1, math.Inf(1)}))
+	text, err := o.displayPercentiles(mustSorted(t, []float64{1, math.Inf(1)}))
+	require.NoError(t, err)
 	require.Contains(t, text, "max: +Inf")
 	require.Contains(t, text, "0pt: 1.0000")
 }
@@ -310,7 +348,7 @@ func inputTestReader(t *testing.T, input string) {
 		readDone: make(chan struct{}),
 	}
 	o := &Opt{input: r}
-	result := make(chan *Stats, 1)
+	result := make(chan *sampdo.Sampdo, 1)
 	go func() { result <- o.tallyingContext(ctx) }()
 	select {
 	case got := <-result:
@@ -325,9 +363,17 @@ func inputTestReader(t *testing.T, input string) {
 			t.Error("read is still blocked after cancellation")
 		}
 		if input == "" {
-			require.Empty(t, got.points)
+			_, err := got.Sorted()
+			require.Error(t, err)
 		} else {
-			require.Equal(t, []float64{1.5, 2.5, 3.0}, got.points)
+			sorted, err := got.Sorted()
+			require.NoError(t, err)
+			require.Equal(t, 3, sorted.Count())
+			for i, want := range []float64{1.5, 2.5, 3.0} {
+				got, err := getSortedPoint(sorted, i)
+				require.NoError(t, err)
+				require.Equal(t, want, got)
+			}
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("SIGINT did not interrupt the blocked read")
@@ -362,13 +408,11 @@ func mustParsePercentileSet(t *testing.T, s string) []percentile {
 	return percentiles
 }
 
-type testJSONOutput struct {
-	Count int     `json:"count"`
-	Max   float64 `json:"max"`
-	Min   float64 `json:"min"`
-	Avg   float64 `json:"avg"`
-	P75   float64 `json:"75pt"`
-	P90   float64 `json:"90pt"`
-	P95   float64 `json:"95pt"`
-	P99   float64 `json:"99pt"`
+func mustSorted(t *testing.T, values []float64) *sampdo.Sorted {
+	t.Helper()
+	data := sampdo.New()
+	require.NoError(t, data.Append(values...))
+	sorted, err := data.Sorted()
+	require.NoError(t, err)
+	return sorted
 }
