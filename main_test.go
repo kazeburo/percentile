@@ -387,6 +387,9 @@ type closeCountingReader struct {
 }
 
 func (r *closeCountingReader) Read(p []byte) (int, error) {
+	if r.closeCalls > 0 {
+		return 0, io.ErrClosedPipe
+	}
 	n, err := r.Reader.Read(p)
 	if err == io.EOF && r.cancelOnEOF != nil {
 		r.cancelOnEOF()
