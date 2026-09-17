@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -45,6 +44,7 @@ func (o *Opt) tallying() *sampdo.Sampdo {
 }
 
 func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
+	t := sampdo.New(sampdo.WithPreferSlicesSort(o.LowCardinality))
 	closed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		_ = o.input.Close()
@@ -59,28 +59,26 @@ func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
 			<-closed
 		}
 	}()
-	t := sampdo.New(sampdo.WithPreferSlicesSort(o.LowCardinality))
-	s := bufio.NewScanner(o.input)
-	for ctx.Err() == nil && s.Scan() {
-		if ctx.Err() != nil {
-			break
-		}
-		b := s.Bytes()
-		if len(b) == 0 {
-			continue
-		}
-		value, err := ltsvparser.ParseFloat(b)
-		if err == nil {
-			err = t.Append(value)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-		}
+	// Ensure the input is closed if the context has an error.
+	if err := context.Cause(ctx); err != nil {
+		<-closed
 	}
+
+	cb := func(data []byte) error {
+		value, errCB := ltsvparser.ParseFloat(data)
+		if errCB == nil {
+			errCB = t.Append(value)
+		}
+		if errCB != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", errCB)
+		}
+		return nil
+	}
+	errScan := Scan(o.input, cb, WithStartBufSize(4096), WithMaxBufSize(65536))
 	if err := context.Cause(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s; stopping input and calculating statistics from data read so far.\n", err)
-	} else if err := s.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
+	} else if errScan != nil {
+		fmt.Fprintf(os.Stderr, "scan error: %v\n", errScan)
 	}
 	return t
 }
