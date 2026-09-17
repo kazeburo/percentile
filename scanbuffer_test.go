@@ -182,6 +182,46 @@ func TestScanBufferScanFileLongLine(t *testing.T) {
 	require.Equal(t, []string{strings.TrimSuffix(longLine, "\n")}, lines)
 }
 
+func TestCallCB(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []byte
+		expect  string
+		called  bool
+		wantErr bool
+	}{
+		{"normal", []byte("test"), "test", true, false},
+		{"with carriage return", []byte("test\r"), "test", true, false},
+		{"carriage return in middle", []byte("te\rst"), "te\rst", true, false},
+		{"carriage return at start", []byte("\rtest"), "\rtest", true, false},
+		{"carriage return only", []byte("\r"), "", false, false},
+		{"empty", []byte(""), "", false, false},
+		{"make error", []byte("makeErr"), "makeErr", true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			input := ""
+			cb := func(data []byte) error {
+				called = true
+				input = string(data)
+				if input == "makeErr" {
+					return fmt.Errorf("test error")
+				}
+				return nil
+			}
+			err := callCB(cb, tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.called, called)
+			require.Equal(t, tt.expect, input)
+		})
+	}
+}
+
 func testFileBuilder(b testing.TB, count int) (*os.File, error) {
 	dir := b.TempDir()
 	filePath := filepath.Join(dir, "testfile.txt")
