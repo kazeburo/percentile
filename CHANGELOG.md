@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.1.7](https://github.com/kazeburo/percentile/compare/v0.1.6...v0.1.7) - 2026-09-17
+
+- feat: add low cardinality optimization and update benchmarks by @kazeburo in https://github.com/kazeburo/percentile/pull/16
+- Refactor percentile calculation and sorting logic by @kazeburo in https://github.com/kazeburo/percentile/pull/18
+- feat: implement ScanBuffer for efficient reading and processing of da… by @kazeburo in https://github.com/kazeburo/percentile/pull/19
+- test: add TestCallCB to validate callback behavior with various inputs by @kazeburo in https://github.com/kazeburo/percentile/pull/20
+
 ## [v0.1.6](https://github.com/kazeburo/percentile/compare/v0.1.5...v0.1.6) - 2026-09-13
 
 - README.md: add instruction to stop reading with SIGINT and report sta… by @kazeburo in https://github.com/kazeburo/percentile/pull/8
