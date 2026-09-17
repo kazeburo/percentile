@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -165,7 +164,7 @@ func TestScanBufferScan(t *testing.T) {
 	}
 	r := strings.NewReader("a\nb\nc")
 	err := Scan(r, cb, WithStartBufSize(16))
-	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, err)
 	require.Equal(t, []string{"a", "b", "c"}, lines)
 }
 
@@ -179,7 +178,7 @@ func TestScanBufferScanFileLongLine(t *testing.T) {
 	longLine := strings.Repeat("A", 100) + "\n"
 	r := strings.NewReader(longLine)
 	err := Scan(r, cb, WithStartBufSize(16), WithMaxBufSize(256))
-	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, err)
 	require.Equal(t, []string{strings.TrimSuffix(longLine, "\n")}, lines)
 }
 
@@ -191,7 +190,7 @@ func testFileBuilder(b testing.TB, count int) (*os.File, error) {
 		return nil, err
 	}
 
-	for _, f := range radixInput(count, "response_time") {
+	for _, f := range radixInput(count, "random") {
 		_, err := fmt.Fprintf(file, "%.3f\n", f)
 		if err != nil {
 			_ = file.Close()
@@ -241,8 +240,6 @@ func BenchmarkScan_BufferScan(b *testing.B) {
 		_, _ = file.Seek(0, io.SeekStart)
 		total = 0
 		err := Scan(file, cb, WithStartBufSize(4096), WithMaxBufSize(64*1024))
-		if err != nil && !errors.Is(err, io.EOF) {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 	}
 }

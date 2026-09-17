@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -78,7 +77,7 @@ func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
 	errScan := Scan(o.input, cb, WithStartBufSize(4096), WithMaxBufSize(65536))
 	if err := context.Cause(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s; stopping input and calculating statistics from data read so far.\n", err)
-	} else if !errors.Is(errScan, io.EOF) {
+	} else if errScan != nil {
 		fmt.Fprintf(os.Stderr, "scan error: %v\n", errScan)
 	}
 	return t

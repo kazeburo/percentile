@@ -80,9 +80,26 @@ func (s *ScanBuffer) scanInternal(r io.Reader, cb CB) error {
 	return nil
 }
 
+func callCB(cb CB, line []byte) error {
+	l := len(line)
+	if l == 0 {
+		return nil
+	}
+	if line[l-1] == '\r' {
+		line = line[:l-1]
+	}
+	if len(line) == 0 {
+		return nil
+	}
+	return cb(line)
+}
+
 func (s *ScanBuffer) Scan(r io.Reader, cb CB) error {
 	for {
 		err := s.scanInternal(r, cb)
+		if err != nil && err == io.EOF { //nolint:staticcheck,errorlint
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -94,7 +111,7 @@ func (s *ScanBuffer) flushTrailingLine(cb CB) error {
 	if s.offset == 0 {
 		return nil
 	}
-	return cb(s.buf[0:s.offset])
+	return callCB(cb, s.buf[0:s.offset])
 }
 
 // scanNewlines scans the buffer for newline characters and invokes the callback for each complete line. It returns the number of bytes processed and any error encountered.
@@ -106,7 +123,7 @@ func (s *ScanBuffer) scanNewlines(n int, cb CB) (int, error) {
 			break
 		}
 		// found newline at k+idx
-		if err := cb(s.buf[k : k+idx]); err != nil {
+		if err := callCB(cb, s.buf[k:k+idx]); err != nil {
 			return k, err
 		}
 		k += idx + 1
@@ -126,7 +143,7 @@ func (s *ScanBuffer) compact(n, k int) {
 
 // expand grows the buffer when it is full and contains no newlines. It returns an error if the buffer exceeds the maximum allowed size.
 func (s *ScanBuffer) expand(n int) error {
-	if n == s.MaxBufSize {
+	if n >= s.MaxBufSize {
 		return ErrTokenTooLong
 	}
 	if n == len(s.buf) {
