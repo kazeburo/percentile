@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.1.8](https://github.com/kazeburo/percentile/compare/v0.1.7...v0.1.8) - 2026-09-22
+
+- use linebuf by @kazeburo in https://github.com/kazeburo/percentile/pull/21
+- update sampdo by @kazeburo in https://github.com/kazeburo/percentile/pull/23
+
 ## [v0.1.7](https://github.com/kazeburo/percentile/compare/v0.1.6...v0.1.7) - 2026-09-17
 
 - feat: add low cardinality optimization and update benchmarks by @kazeburo in https://github.com/kazeburo/percentile/pull/16
