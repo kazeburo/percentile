@@ -30,12 +30,11 @@ type percentile struct {
 }
 
 type Opt struct {
-	Version        bool   `short:"v" long:"version" description:"Show version"`
-	PercentileSet  string `short:"p" long:"percentile-set" description:"Percentiles to display" default:"99,95,90,75"`
-	Output         string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"` //nolint:staticcheck
-	LowCardinality bool   `short:"l" long:"low-cardinality" description:"Optimize for low cardinality data"`
-	ptSet          []percentile
-	input          io.ReadCloser
+	Version       bool   `short:"v" long:"version" description:"Show version"`
+	PercentileSet string `short:"p" long:"percentile-set" description:"Percentiles to display" default:"99,95,90,75"`
+	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"` //nolint:staticcheck
+	ptSet         []percentile
+	input         io.ReadCloser
 }
 
 func (o *Opt) tallying() *sampdo.Sampdo {
@@ -45,7 +44,7 @@ func (o *Opt) tallying() *sampdo.Sampdo {
 }
 
 func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
-	t := sampdo.New(sampdo.WithPreferSlicesSort(o.LowCardinality))
+	t := sampdo.New()
 	closed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		_ = o.input.Close()

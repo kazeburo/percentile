@@ -4,6 +4,18 @@ Display percentile statistics from numeric input.
 
 `percentile` reads one floating-point number per line and outputs count, max, min, average, and configurable percentiles. It supports both text and JSON output formats.
 
+## Why `percentile` is fast / 高速な理由
+
+`percentile` is designed to be fast on large numeric inputs.
+
+- **Radix sort for non-negative values**: Non-negative data is sorted with an optimized radix sort instead of a comparison sort. On many distributions, this is significantly faster than Go's default `slices.Sort`.
+- **SIMD pre-scan on supported architectures**: On amd64 (SSE2) and ARM64 (NEON), the radix sort pre-scan checks ordering and finds varying key bits using SIMD. Race builds and `-tags=purego` fall back to a portable Go implementation.
+- **Optimized sorted/ descending inputs**: Already-sorted or all-equal inputs are detected and handled with minimal work, often avoiding a scratch allocation. Descending inputs are detected and reversed in place.
+- **Single sort for multiple statistics**: Count, min, max, average, and all requested percentiles are computed from one sorted view, so the data is not traversed repeatedly.
+- **Buffered line input**: Reading uses `linebuf`, which processes input in buffered chunks and avoids creating a separate string for each line. This reduces allocations and copying while scanning large files or piped streams.
+
+On an Apple M3 MacBook Air, reading 1,000,000 lines and producing the default statistics takes about **0.04 seconds**.
+
 ## Usage
 
 ```
@@ -14,7 +26,6 @@ Application Options:
   -v, --version            Show version
   -p, --percentile-set=    Percentiles to display (default: 99,95,90,75)
   -o, --output=[text|json] Output format (default: text)
-  -l, --low-cardinality    Optimize for low cardinality data
 
 Help Options:
   -h, --help               Show this help message
@@ -27,7 +38,6 @@ Help Options:
 | `--version` | `-v` | Show version and exit. | - |
 | `--percentile-set` | `-p` | Comma-separated list of percentiles to display. | `99,95,90,75` |
 | `--output` | `-o` | Output format. Choose `text` or `json`. | `text` |
-| `--low-cardinality` | `-l` | Optimize sorting for low-cardinality or narrow-range data. | `false` |
 
 ## Examples
 
