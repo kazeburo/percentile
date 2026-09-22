@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 
 	"github.com/monitoring-forge/flagrun"
+	"github.com/monitoring-forge/linebuf"
 	"github.com/monitoring-forge/ltsvparser"
 	"github.com/monitoring-forge/sampdo"
 	"golang.org/x/term"
@@ -74,7 +75,7 @@ func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
 		}
 		return nil
 	}
-	errScan := Scan(o.input, cb, WithStartBufSize(4096), WithMaxBufSize(65536))
+	errScan := linebuf.Scan(o.input, cb, linebuf.WithStartBufSize(4096), linebuf.WithMaxBufSize(65536))
 	if err := context.Cause(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s; stopping input and calculating statistics from data read so far.\n", err)
 	} else if errScan != nil {
