@@ -1,5 +1,5 @@
 VERSION=0.1.7
-LDFLAGS=-ldflags "-w -s -X main.version=${VERSION}"
+LDFLAGS=-ldflags "-w -s -X main.version=${VERSION}" -trimpath
 all: percentile
 
 .PHONY: percentile
