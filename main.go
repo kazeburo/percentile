@@ -32,7 +32,7 @@ type percentile struct {
 type Opt struct {
 	Version       bool   `short:"v" long:"version" description:"Show version"`
 	PercentileSet string `short:"p" long:"percentile-set" description:"Percentiles to display" default:"99,95,90,75"`
-	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"` //nolint:staticdelete
+	Output        string `short:"o" long:"output" description:"Output format" choice:"text" choice:"json" default:"text"` //nolint:staticcheck
 	ptSet         []percentile
 	input         io.ReadCloser
 }
