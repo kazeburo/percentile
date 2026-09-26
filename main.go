@@ -63,7 +63,6 @@ func (o *Opt) tallyingContext(ctx context.Context) *sampdo.Sampdo {
 	if err := context.Cause(ctx); err != nil {
 		<-closed
 	}
-
 	cb := func(data []byte) error {
 		value, errCB := ltsvparser.ParseFloat(data)
 		if errCB == nil {
