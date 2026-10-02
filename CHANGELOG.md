@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.11](https://github.com/kazeburo/percentile/compare/v0.1.10...v0.1.11) - 2026-10-02
+
+- ci: bump Songmu/tagpr from 1.20.3 to 1.21.0 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/28
+
 ## [v0.1.10](https://github.com/kazeburo/percentile/compare/v0.1.9...v0.1.10) - 2026-09-26
 
 - Feat/update ltsvparser parsefloat by @kazeburo in https://github.com/kazeburo/percentile/pull/26
