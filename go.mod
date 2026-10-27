@@ -6,9 +6,9 @@ require (
 	github.com/monitoring-forge/flagrun v0.0.10
 	github.com/monitoring-forge/linebuf v0.0.2
 	github.com/monitoring-forge/ltsvparser v0.2.9
-	github.com/monitoring-forge/sampdo v0.0.3
+	github.com/monitoring-forge/sampdo v0.0.4
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/term v0.46.0
+	golang.org/x/term v0.47.0
 )
 
 require (
