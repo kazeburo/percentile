@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.1.11](https://github.com/kazeburo/percentile/compare/v0.1.10...v0.1.11) - 2026-10-31
+
+- ci: bump Songmu/tagpr from 1.20.3 to 1.21.0 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/28
+- ci: bump Songmu/tagpr from 1.21.0 to 1.21.1 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/30
+- ci: bump Songmu/tagpr from 1.21.1 to 1.21.2 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/32
+- go: bump golang.org/x/sys from 0.48.0 to 0.49.0 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/31
+- ci: bump goreleaser/goreleaser-action from 7.2.3 to 7.3.0 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/34
+- go: bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/33
+- ci: bump Songmu/tagpr from 1.21.2 to 1.21.3 in the dependencies group by @dependabot[bot] in https://github.com/kazeburo/percentile/pull/35
+
 ## [v0.1.10](https://github.com/kazeburo/percentile/compare/v0.1.9...v0.1.10) - 2026-09-26
 
 - Feat/update ltsvparser parsefloat by @kazeburo in https://github.com/kazeburo/percentile/pull/26
